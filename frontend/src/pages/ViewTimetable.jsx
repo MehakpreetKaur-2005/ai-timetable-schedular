@@ -103,12 +103,43 @@ export default function ViewTimetable() {
         </div>
     );
 
+    const handleExport = () => {
+        if (!hasSchedule) return;
+        
+        // CSV Header
+        const headers = ['Day', 'Time', 'Course', 'Faculty', 'Room'];
+        
+        // CSV Rows
+        const rows = schedule.map(s => [
+            s.day,
+            `${s.start_time}-${s.end_time}`,
+            s.course_name,
+            s.faculty_name,
+            s.room_name
+        ]);
+
+        const csvContent = [
+            headers.join(','),
+            ...rows.map(r => r.map(val => `"${val}"`).join(','))
+        ].join('\n');
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `timetable_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     return (
         <div>
             <div className="page-header">
                 <div className="page-header__info"><h2>View Timetable</h2><p className="page-header__description">Browse generated schedules by view type</p></div>
                 <div className="page-header__actions">
-                    <button className="btn btn--secondary" disabled={!hasSchedule}><HiOutlineArrowDownTray /> Export</button>
+                    <button className="btn btn--secondary" disabled={!hasSchedule} onClick={handleExport}><HiOutlineArrowDownTray /> Export</button>
                 </div>
             </div>
 

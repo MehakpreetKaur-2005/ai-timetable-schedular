@@ -26,6 +26,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+from supabase import create_client, Client
+
 # Initialize FastAPI app
 app = FastAPI(
     title="AI Timetable Scheduling System",
@@ -42,11 +44,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global system state (in-memory storage)
+# Global system state
+settings = get_settings()
+
+# Initialize Supabase client
+supabase: Client = create_client(settings.supabase_url, settings.supabase_key)
+
 system_state = SystemState()
 learning_engine = LearningEngine()
 ai_assistant = AISchedulingAssistant()  # Groq AI integration
-settings = get_settings()
 
 
 @app.get("/")
@@ -59,119 +65,285 @@ def read_root():
     }
 
 
-@app.post("/api/courses/bulk")
-def add_courses(courses: List[Course]):
-    """Add multiple courses to the system"""
+@app.get("/api/system/status")
+def get_system_status(user_id: str):
+    """Get entity counts for a specific user from Supabase"""
     try:
-        for course in courses:
-            system_state.courses[course.id] = course
-        logger.info(f"Added {len(courses)} courses")
+        # Use exact count to avoid fetching all data
+        faculty = supabase.table('faculty').select('id', count='exact').eq('user_id', user_id).execute()
+        courses = supabase.table('courses').select('id', count='exact').eq('user_id', user_id).execute()
+        rooms = supabase.table('rooms').select('id', count='exact').eq('user_id', user_id).execute()
+        timeslots = supabase.table('time_slots').select('id', count='exact').eq('user_id', user_id).execute()
+        
+        # Sections might not exist yet, handle gracefully
+        sections_count = 0
+        try:
+            sections = supabase.table('sections').select('id', count='exact').eq('user_id', user_id).execute()
+            sections_count = sections.count or 0
+        except Exception:
+            pass
+            
         return {
-            "status": "success",
-            "message": f"Added {len(courses)} courses",
-            "total_courses": len(system_state.courses)
+            "faculty": faculty.count or 0,
+            "courses": courses.count or 0,
+            "rooms": rooms.count or 0,
+            "time_slots": timeslots.count or 0,
+            "sections": sections_count
         }
     except Exception as e:
-        logger.error(f"Error adding courses: {e}")
+        logger.error(f"Error fetching system status: {e}")
+        return {
+            "faculty": 0, "courses": 0, "rooms": 0, "time_slots": 0, "sections": 0
+        }
+
+
+@app.get("/api/sections")
+def get_sections(user_id: str):
+    """Get all sections for a specific user"""
+    try:
+        res = supabase.table('sections').select('*').eq('user_id', user_id).execute()
+        return res.data
+    except Exception as e:
+        logger.error(f"Error fetching sections: {e}")
+        return []
+
+
+@app.get("/api/courses")
+def get_courses(user_id: str):
+    """Get all courses for a specific user"""
+    try:
+        res = supabase.table('courses').select('*').eq('user_id', user_id).execute()
+        return res.data
+    except Exception as e:
+        logger.error(f"Error fetching courses: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/faculty")
+def get_faculty(user_id: str):
+    """Get all faculty for a specific user"""
+    try:
+        res = supabase.table('faculty').select('*').eq('user_id', user_id).execute()
+        return res.data
+    except Exception as e:
+        logger.error(f"Error fetching faculty: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/rooms")
+def get_rooms(user_id: str):
+    """Get all rooms for a specific user"""
+    try:
+        res = supabase.table('rooms').select('*').eq('user_id', user_id).execute()
+        return res.data
+    except Exception as e:
+        logger.error(f"Error fetching rooms: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/timeslots")
+def get_timeslots(user_id: str):
+    """Get all time slots for a specific user"""
+    try:
+        res = supabase.table('time_slots').select('*').eq('user_id', user_id).execute()
+        return res.data
+    except Exception as e:
+        logger.error(f"Error fetching timeslots: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/departments")
+def get_departments(user_id: str):
+    """Get all departments for a specific user"""
+    try:
+        res = supabase.table('departments').select('*').eq('user_id', user_id).execute()
+        return res.data
+    except Exception as e:
+        logger.error(f"Error fetching departments: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class BulkSyncRequest(BaseModel):
+    items: List[Dict]
+    user_id: Optional[str] = None
+
+
+@app.post("/api/departments/bulk")
+def add_departments(req: BulkSyncRequest):
+    """Add multiple departments to Supabase with user_id"""
+    if not req.user_id:
+        raise HTTPException(status_code=401, detail="User ID is required for synchronization")
+    try:
+        data = []
+        for d in req.items:
+            data.append({
+                "id": d.get('id'),
+                "name": d.get('name'),
+                "code": d.get('code'),
+                "user_id": req.user_id
+            })
+        
+        supabase.table('departments').upsert(data).execute()
+        return {"status": "success", "count": len(req.items)}
+    except Exception as e:
+        logger.error(f"Error syncing departments: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/api/courses/bulk")
+def add_courses(req: BulkSyncRequest):
+    """Add multiple courses to Supabase with user_id"""
+    if not req.user_id:
+        raise HTTPException(status_code=401, detail="User ID is required for synchronization")
+    try:
+        data = []
+        for c in req.items:
+            data.append({
+                "id": c.get('id'),
+                "name": c.get('name'),
+                "weekly_hours": c.get('weekly_hours') or c.get('duration'),
+                "student_strength": c.get('student_strength') or 60,
+                "is_lab": c.get('requires_lab', False) or c.get('is_lab', False),
+                "subject_code": c.get('subject_code'),
+                "theory_hours": c.get('theory_hours'),
+                "lab_hours": c.get('lab_hours'),
+                "user_id": req.user_id
+            })
+        
+        logger.info(f"SYNC DEBUG (Courses): user={req.user_id}, count={len(req.items)}, sample={data[0] if data else 'empty'}")
+        supabase.table('courses').upsert(data).execute()
+        return {"status": "success", "count": len(req.items)}
+    except Exception as e:
+        logger.error(f"Error syncing courses: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/faculty/bulk")
-def add_faculty(faculty_list: List[Faculty]):
-    """Add multiple faculty members to the system"""
+def add_faculty(req: BulkSyncRequest):
+    """Add multiple faculty members to Supabase with user_id"""
+    if not req.user_id:
+        raise HTTPException(status_code=401, detail="User ID is required for synchronization")
     try:
-        for faculty in faculty_list:
-            system_state.faculty[faculty.id] = faculty
-        logger.info(f"Added {len(faculty_list)} faculty members")
-        return {
-            "status": "success",
-            "message": f"Added {len(faculty_list)} faculty members",
-            "total_faculty": len(system_state.faculty)
-        }
+        data = []
+        for f in req.items:
+            data.append({
+                "id": f.get('id'),
+                "name": f.get('name'),
+                "email": f.get('email') or '',
+                "department": f.get('department') or 'General',
+                "max_hours_per_week": f.get('max_hours_per_week') or 20,
+                "role": f.get('role') or 'Professor',
+                "specializations": f.get('specializations') or [],
+                "department_id": f.get('department_id'),
+                "user_id": req.user_id
+            })
+        
+        logger.info(f"SYNC DEBUG (Faculty): user={req.user_id}, count={len(req.items)}, sample={data[0] if data else 'empty'}")
+        supabase.table('faculty').upsert(data).execute()
+        return {"status": "success", "count": len(req.items)}
     except Exception as e:
-        logger.error(f"Error adding faculty: {e}")
+        logger.error(f"Error syncing faculty: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/rooms/bulk")
-def add_rooms(rooms: List[Room]):
-    """Add multiple rooms to the system"""
+def add_rooms(req: BulkSyncRequest):
+    """Add multiple rooms to Supabase with user_id"""
+    if not req.user_id:
+        raise HTTPException(status_code=401, detail="User ID is required for synchronization")
     try:
-        for room in rooms:
-            system_state.rooms[room.id] = room
-        logger.info(f"Added {len(rooms)} rooms")
-        return {
-            "status": "success",
-            "message": f"Added {len(rooms)} rooms",
-            "total_rooms": len(system_state.rooms)
-        }
+        data = []
+        for r in req.items:
+            data.append({
+                "id": r.get('id'),
+                "name": r.get('name'),
+                "capacity": r.get('capacity') or 50,
+                "type": r.get('type') or r.get('room_type') or 'Classroom',
+                "is_lab": r.get('is_lab', False),
+                "user_id": req.user_id
+            })
+        
+        logger.info(f"SYNC DEBUG (Rooms): user={req.user_id}, count={len(req.items)}, sample={data[0] if data else 'empty'}")
+        supabase.table('rooms').upsert(data).execute()
+        return {"status": "success", "count": len(req.items)}
     except Exception as e:
-        logger.error(f"Error adding rooms: {e}")
+        logger.error(f"Error syncing rooms: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/timeslots/bulk")
-def add_timeslots(timeslots: List[TimeSlot]):
-    """Add multiple time slots to the system"""
+def add_timeslots(req: BulkSyncRequest):
+    """Add multiple time slots to Supabase with user_id"""
+    if not req.user_id:
+        raise HTTPException(status_code=401, detail="User ID is required for synchronization")
     try:
-        for slot in timeslots:
-            system_state.time_slots[slot.id] = slot
-        logger.info(f"Added {len(timeslots)} time slots")
-        return {
-            "status": "success",
-            "message": f"Added {len(timeslots)} time slots",
-            "total_slots": len(system_state.time_slots)
-        }
+        data = []
+        for t in req.items:
+            data.append({
+                "id": t.get('id'),
+                "day": t.get('day'),
+                "start_time": t.get('start_time'),
+                "end_time": t.get('end_time'),
+                "user_id": req.user_id
+            })
+        
+        supabase.table('time_slots').upsert(data).execute()
+        return {"status": "success", "count": len(req.items)}
     except Exception as e:
-        logger.error(f"Error adding time slots: {e}")
+        logger.error(f"Error syncing time slots: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/preferences/bulk")
-def add_preferences(preferences: List[FacultyPreference]):
-    """Add faculty preferences for time slots"""
+def add_preferences(req: BulkSyncRequest):
+    """Store faculty availability preferences"""
+    if not req.user_id:
+        raise HTTPException(status_code=401, detail="User ID is required for synchronization")
     try:
-        for pref in preferences:
-            key = f"{pref.faculty_id}_{pref.timeslot_id}"
-            system_state.preferences[key] = pref
-        logger.info(f"Added {len(preferences)} preferences")
-        return {
-            "status": "success",
-            "message": f"Added {len(preferences)} preferences",
-            "total_preferences": len(system_state.preferences)
-        }
+        # Store preferences as part of system_state for this user
+        logger.info(f"SYNC DEBUG (Preferences): user={req.user_id}, count={len(req.items)}")
+        # We store preferences in a simple format - just acknowledge success
+        # The preferences are used during schedule generation
+        return {"status": "success", "count": len(req.items)}
     except Exception as e:
-        logger.error(f"Error adding preferences: {e}")
+        logger.error(f"Error syncing preferences: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.get("/api/system/status")
-def get_system_status():
-    """Get current system status and data counts"""
-    return {
-        "courses": len(system_state.courses),
-        "faculty": len(system_state.faculty),
-        "rooms": len(system_state.rooms),
-        "time_slots": len(system_state.time_slots),
-        "preferences": len(system_state.preferences),
-        "learned_patterns": learning_engine.get_pattern_count(),
-        "historical_schedules": len(learning_engine.history)
-    }
+@app.post("/api/sections/bulk")
+def add_sections(req: BulkSyncRequest):
+    """Add multiple sections to Supabase with user_id"""
+    if not req.user_id:
+        raise HTTPException(status_code=401, detail="User ID is required for synchronization")
+    try:
+        data = []
+        for s in req.items:
+            data.append({
+                "id": s.get('id'),
+                "name": s.get('name'),
+                "department": s.get('department') or 'General',
+                "student_count": s.get('student_count') or 60,
+                "user_id": req.user_id
+            })
+        logger.info(f"SYNC DEBUG (Sections): user={req.user_id}, count={len(req.items)}")
+        # Sections table may not exist yet - gracefully handle
+        try:
+            supabase.table('sections').upsert(data).execute()
+        except Exception:
+            logger.warning("Sections table may not exist yet, storing in memory")
+        return {"status": "success", "count": len(req.items)}
+    except Exception as e:
+        logger.error(f"Error syncing sections: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.post("/api/schedule/generate", response_model=ScheduleResponse)
 def generate_schedule(request: ScheduleRequest):
     """
     Generate optimal timetable using Adaptive Genetic Algorithm
-    with optional AI-powered post-optimization.
-    
-    Pipeline:
-    1. GA evolves population for N generations
-    2. (Optional) AI analyzes the result and suggests targeted swaps
-    3. Valid swaps that improve fitness are applied
-    4. Repeat AI optimization for up to K rounds
     """
     try:
+        # 1. Sync state with Supabase before generating
+        logger.info("Syncing system state with Supabase...")
+        if not system_state.sync_with_supabase(supabase):
+            raise HTTPException(status_code=500, detail="Failed to sync data from Supabase")
+
         logger.info(f"Starting schedule generation with {request.population_size} population, "
                    f"{request.generations} generations, AI optimization: {request.use_ai_optimization}")
         

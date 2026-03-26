@@ -25,10 +25,10 @@ export default function AdminLayout() {
     const location = useLocation();
     const [collapsed, setCollapsed] = useState(false);
 
-    // TODO: Re-enable auth guard once Supabase is configured
-    // if (!isAuthenticated) {
-    //     return <Navigate to="/login" replace />;
-    // }
+    // Re-enabled auth guard
+    if (!isAuthenticated) {
+        return <Navigate to="/login" replace />;
+    }
 
     const title = pageTitles[location.pathname] || 'Admin Portal';
 

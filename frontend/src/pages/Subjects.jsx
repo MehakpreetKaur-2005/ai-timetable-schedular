@@ -2,16 +2,17 @@ import { useState } from 'react';
 import { useNotification } from '../context/NotificationContext';
 import { useSchedule } from '../context/ScheduleContext';
 import { syncCourses } from '../services/api';
-import { HiOutlinePlus, HiOutlinePencil, HiOutlineTrash, HiOutlineMagnifyingGlass, HiOutlineXMark, HiOutlineBookOpen } from 'react-icons/hi2';
+import { v4 as uuidv4 } from 'uuid';
+import { HiOutlinePlus, HiOutlineMagnifyingGlass, HiOutlineXMark, HiOutlineBookOpen, HiPencil, HiTrash } from 'react-icons/hi2';
 
 export default function Subjects() {
     const notify = useNotification();
-    const { markSynced, refreshStatus, departments, subjects, setSubjects } = useSchedule();
+    const { markSynced, refreshStatus, departments, subjects, setSubjects, faculty, userId } = useSchedule();
     const [search, setSearch] = useState('');
     const [filterDept, setFilterDept] = useState('');
     const [modal, setModal] = useState(null);
     const [deleteConfirm, setDeleteConfirm] = useState(null);
-    const [form, setForm] = useState({ name: '', departmentId: '', weeklyHours: '', labRequired: false });
+    const [form, setForm] = useState({ name: '', subjectCode: '', departmentId: '', theoryHours: '', labHours: '', labRequired: false, labAssistantId: '' });
     const [errors, setErrors] = useState({});
     const [syncing, setSyncing] = useState(false);
 
@@ -21,14 +22,30 @@ export default function Subjects() {
         return matchSearch && matchDept;
     });
 
-    const openAdd = () => { setForm({ name: '', departmentId: '', weeklyHours: '4', labRequired: false }); setErrors({}); setModal({ mode: 'add' }); };
-    const openEdit = (s) => { setForm({ name: s.name, departmentId: String(s.departmentId), weeklyHours: String(s.weeklyHours), labRequired: s.labRequired }); setErrors({}); setModal({ mode: 'edit', data: s }); };
+    const openAdd = () => { setForm({ name: '', subjectCode: '', departmentId: '', theoryHours: '3', labHours: '2', labRequired: false, labAssistantId: '' }); setErrors({}); setModal({ mode: 'add' }); };
+    const openEdit = (s) => { 
+        setForm({ 
+            name: s.name, 
+            subjectCode: s.subjectCode || '', 
+            departmentId: String(s.departmentId), 
+            theoryHours: String(s.theoryHours ?? s.weeklyHours), 
+            labHours: String(s.labHours || 0), 
+            labRequired: s.labRequired,
+            labAssistantId: s.labAssistantId || ''
+        }); 
+        setErrors({}); 
+        setModal({ mode: 'edit', data: s }); 
+    };
 
     const validate = () => {
         const errs = {};
         if (!form.name.trim()) errs.name = 'Required';
+        if (!form.subjectCode.trim()) errs.subjectCode = 'Required';
         if (!form.departmentId) errs.departmentId = 'Required';
-        if (!form.weeklyHours || Number(form.weeklyHours) < 1) errs.weeklyHours = 'Valid hours required';
+        if (!form.theoryHours && form.theoryHours !== '0' && form.theoryHours !== 0) errs.theoryHours = 'Required';
+        if (form.theoryHours !== '' && Number(form.theoryHours) < 0) errs.theoryHours = 'Cannot be negative';
+        if (form.labRequired && (!form.labHours || Number(form.labHours) < 1)) errs.labHours = 'Required';
+        if (form.labRequired && !form.labAssistantId) errs.labAssistantId = 'Select a lab assistant';
         setErrors(errs); return Object.keys(errs).length === 0;
     };
 
@@ -36,7 +53,7 @@ export default function Subjects() {
     const syncToBackend = async (updatedSubjects) => {
         setSyncing(true);
         try {
-            await syncCourses(updatedSubjects);
+            await syncCourses(updatedSubjects, userId);
             markSynced('courses');
             refreshStatus();
             notify.success('Synced with backend', `${updatedSubjects.length} course(s) synced.`);
@@ -50,10 +67,24 @@ export default function Subjects() {
     const handleSave = () => {
         if (!validate()) return;
         const dept = departments.find(d => d.id === Number(form.departmentId));
-        const data = { name: form.name, departmentId: Number(form.departmentId), department: dept?.name || '', weeklyHours: Number(form.weeklyHours), labRequired: form.labRequired };
+        const tHrs = Number(form.theoryHours) || 0;
+        const lHrs = form.labRequired ? (Number(form.labHours) || 0) : 0;
+        const labAssistants = faculty.filter(f => f.role === 'Lab Assistant');
+        const data = { 
+            name: form.name, 
+            subjectCode: form.subjectCode.toUpperCase(), 
+            departmentId: Number(form.departmentId), 
+            department: dept?.name || '', 
+            theoryHours: tHrs,
+            labHours: lHrs,
+            weeklyHours: tHrs + lHrs, 
+            labRequired: form.labRequired,
+            labAssistantId: form.labRequired ? form.labAssistantId : '',
+            labAssistantName: form.labRequired ? (labAssistants.find(la => la.id === form.labAssistantId)?.name || '') : ''
+        };
         let updated;
         if (modal.mode === 'add') {
-            updated = [...subjects, { id: Date.now(), ...data }];
+            updated = [...subjects, { id: uuidv4(), ...data }];
             setSubjects(updated);
             notify.success('Subject added', `${form.name} created.`);
         } else {
@@ -107,18 +138,39 @@ export default function Subjects() {
                     ) : (
                         <div className="table-wrapper">
                             <table className="table">
-                                <thead><tr><th>Subject Name</th><th>Department</th><th>Weekly Hours</th><th>Lab Required</th><th style={{ width: 120 }}>Actions</th></tr></thead>
+                                <thead><tr><th>Subject</th><th>Department</th><th>Weekly Hours</th><th>Lab Required</th><th style={{ width: 120 }}>Actions</th></tr></thead>
                                 <tbody>
                                     {filtered.map(s => (
                                         <tr key={s.id}>
-                                            <td style={{ fontWeight: 500, color: 'var(--gray-900)' }}>{s.name}</td>
+                                            <td style={{ color: 'var(--gray-900)' }}>
+                                                <div style={{ fontWeight: 600 }}>{s.name}</div>
+                                                <div style={{ fontSize: 'var(--font-xs)', color: 'var(--gray-500)' }}>{s.subjectCode}</div>
+                                            </td>
                                             <td><span className="badge badge--neutral">{s.department}</span></td>
-                                            <td>{s.weeklyHours}h</td>
+                                            <td>
+                                                {Number(s.theoryHours || s.weeklyHours) > 0 && <div style={{ fontWeight: 500 }}>{s.theoryHours || s.weeklyHours}h Theory</div>}
+                                                {s.labRequired && <div style={{ fontSize: 'var(--font-xs)', color: 'var(--warning-600)' }}>+ {s.labHours}h Lab</div>}
+                                                {s.labRequired && s.labAssistantName && <div style={{ fontSize: 'var(--font-xs)', color: 'var(--primary-600)' }}>🧪 {s.labAssistantName}</div>}
+                                            </td>
                                             <td>{s.labRequired ? <span className="badge badge--warning">Yes</span> : <span className="badge badge--neutral">No</span>}</td>
-                                            <td><div className="table__actions">
-                                                <button className="btn btn--ghost btn--icon btn--sm" onClick={() => openEdit(s)}><HiOutlinePencil /></button>
-                                                <button className="btn btn--ghost btn--icon btn--sm" style={{ color: 'var(--error-500)' }} onClick={() => setDeleteConfirm(s)}><HiOutlineTrash /></button>
-                                            </div></td>
+                                            <td>
+                                                <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                                                    <button 
+                                                        onClick={() => openEdit(s)}
+                                                        title="Edit"
+                                                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '5px', display: 'block', visibility: 'visible', opacity: 1 }}
+                                                    >
+                                                        <HiPencil style={{ color: '#000000', fontSize: '1.5rem', display: 'block', visibility: 'visible', opacity: 1 }} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => setDeleteConfirm(s)}
+                                                        title="Delete"
+                                                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '5px', display: 'block', visibility: 'visible', opacity: 1 }}
+                                                    >
+                                                        <HiTrash style={{ color: '#ff0000', fontSize: '1.5rem', display: 'block', visibility: 'visible', opacity: 1 }} />
+                                                    </button>
+                                                </div>
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -137,10 +189,17 @@ export default function Subjects() {
                         </div>
                         <div className="modal__body">
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-                                <div className="form-field">
-                                    <label className="form-field__label form-field__label--required">Subject Name</label>
-                                    <input className={`form-field__input${errors.name ? ' form-field__input--error' : ''}`} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-                                    {errors.name && <span className="form-field__error">{errors.name}</span>}
+                                <div className="form-grid">
+                                    <div className="form-field">
+                                        <label className="form-field__label form-field__label--required">Subject Name</label>
+                                        <input className={`form-field__input${errors.name ? ' form-field__input--error' : ''}`} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+                                        {errors.name && <span className="form-field__error">{errors.name}</span>}
+                                    </div>
+                                    <div className="form-field">
+                                        <label className="form-field__label form-field__label--required">Subject Code</label>
+                                        <input className={`form-field__input${errors.subjectCode ? ' form-field__input--error' : ''}`} value={form.subjectCode} onChange={e => setForm({ ...form, subjectCode: e.target.value })} placeholder="e.g. CS101" />
+                                        {errors.subjectCode && <span className="form-field__error">{errors.subjectCode}</span>}
+                                    </div>
                                 </div>
                                 <div className="form-grid">
                                     <div className="form-field">
@@ -152,11 +211,47 @@ export default function Subjects() {
                                         {errors.departmentId && <span className="form-field__error">{errors.departmentId}</span>}
                                     </div>
                                     <div className="form-field">
-                                        <label className="form-field__label form-field__label--required">Weekly Hours</label>
-                                        <input className={`form-field__input${errors.weeklyHours ? ' form-field__input--error' : ''}`} type="number" min="1" value={form.weeklyHours} onChange={e => setForm({ ...form, weeklyHours: e.target.value })} />
-                                        {errors.weeklyHours && <span className="form-field__error">{errors.weeklyHours}</span>}
+                                        <label className="form-field__label form-field__label--required">Theory Hours</label>
+                                        <input 
+                                            className={`form-field__input${errors.theoryHours ? ' form-field__input--error' : ''}`} 
+                                            type="number" min="0" 
+
+                                            style={{ maxWidth: '100px', width: '100%' }}
+                                            value={form.theoryHours} 
+                                            onChange={e => setForm({ ...form, theoryHours: e.target.value })} 
+                                        />
+                                        {errors.theoryHours && <span className="form-field__error">{errors.theoryHours}</span>}
                                     </div>
                                 </div>
+                                {form.labRequired && (
+                                    <div className="form-field">
+                                        <label className="form-field__label form-field__label--required">Lab Hours</label>
+                                        <input 
+                                            className={`form-field__input${errors.labHours ? ' form-field__input--error' : ''}`} 
+                                            type="number" min="1" 
+                                            style={{ maxWidth: '100px', width: '100%' }}
+                                            value={form.labHours} 
+                                            onChange={e => setForm({ ...form, labHours: e.target.value })} 
+                                        />
+                                        {errors.labHours && <span className="form-field__error">{errors.labHours}</span>}
+                                    </div>
+                                )}
+                                {form.labRequired && (
+                                    <div className="form-field">
+                                        <label className="form-field__label form-field__label--required">Lab Assistant</label>
+                                        <select 
+                                            className={`form-field__input${errors.labAssistantId ? ' form-field__input--error' : ''}`} 
+                                            value={form.labAssistantId} 
+                                            onChange={e => setForm({ ...form, labAssistantId: e.target.value })}
+                                        >
+                                            <option value="">Select Lab Assistant</option>
+                                            {faculty.filter(f => f.role === 'Lab Assistant').map(f => (
+                                                <option key={f.id} value={f.id}>{f.name} — {f.department}</option>
+                                            ))}
+                                        </select>
+                                        {errors.labAssistantId && <span className="form-field__error">{errors.labAssistantId}</span>}
+                                    </div>
+                                )}
                                 <div className="toggle-field">
                                     <div className={`toggle${form.labRequired ? ' toggle--active' : ''}`} onClick={() => setForm({ ...form, labRequired: !form.labRequired })}>
                                         <div className="toggle__knob"></div>

@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     ai_model: str = "llama-3.3-70b-versatile"
     ai_temperature: float = 0.7
     ai_max_tokens: int = 2000
+
+    # Supabase Configuration
+    supabase_url: Optional[str] = None
+    supabase_key: Optional[str] = None
+    supabase_service_role_key: Optional[str] = None
     
     # Application Settings
     app_env: str = "development"
@@ -42,7 +47,19 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     """Get cached settings instance"""
-    return Settings()
+    s = Settings()
+    # Explicit fallbacks for GROQ
+    if not s.groq_api_key:
+         s.groq_api_key = os.environ.get("GROQ_API_KEY")
+    
+    # Explicit fallbacks for Supabase (mapping from VITE_ names)
+    if not s.supabase_url:
+        s.supabase_url = os.environ.get("VITE_SUPABASE_URL")
+    if not s.supabase_key:
+        # Use service role key if available (admin access), otherwise fallback to anon key
+        s.supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("VITE_SUPABASE_ANON_KEY")
+         
+    return s
 
 
 # Validate on import

@@ -159,8 +159,8 @@ class ScheduleResponse(BaseModel):
 
 class SystemState:
     """
-    Global system state holding all entities
-    In-memory storage for the application
+    Global system state holding all entities.
+    Acts as a cache/relay for data from Supabase.
     """
     def __init__(self):
         self.courses: Dict[str, Course] = {}
@@ -169,6 +169,67 @@ class SystemState:
         self.time_slots: Dict[str, TimeSlot] = {}
         self.preferences: Dict[str, FacultyPreference] = {}
     
+    def clear(self):
+        """Clear the current state"""
+        self.courses = {}
+        self.faculty = {}
+        self.rooms = {}
+        self.time_slots = {}
+        self.preferences = {}
+        
+    def sync_with_supabase(self, supabase):
+        """Sync local state with data from Supabase"""
+        try:
+            self.clear()
+            
+            # Fetch Faculty
+            faculty_data = supabase.table('faculty').select('*').execute()
+            for f in faculty_data.data:
+                self.faculty[f['id']] = Faculty(
+                    id=f['id'],
+                    name=f['name'],
+                    department=f.get('department', ''),
+                    max_hours_per_week=f.get('max_hours_per_week', 20),
+                    specializations=f.get('specializations', [])
+                )
+                
+            # Fetch Courses
+            courses_data = supabase.table('courses').select('*').execute()
+            for c in courses_data.data:
+                self.courses[c['id']] = Course(
+                    id=c['id'],
+                    name=c['name'],
+                    duration=c.get('weekly_hours', 1),
+                    student_strength=c.get('student_strength', 0),
+                    requires_lab=c.get('is_lab', False)
+                )
+                
+            # Fetch Rooms
+            rooms_data = supabase.table('rooms').select('*').execute()
+            for r in rooms_data.data:
+                self.rooms[r['id']] = Room(
+                    id=r['id'],
+                    name=r['name'],
+                    capacity=r.get('capacity', 0),
+                    room_type=r.get('type', 'lecture'),
+                    has_projector=True
+                )
+                
+            # Fetch Time Slots
+            slots_data = supabase.table('time_slots').select('*').execute()
+            for s in slots_data.data:
+                self.time_slots[s['id']] = TimeSlot(
+                    id=s['id'],
+                    day=s['day'],
+                    start_time=s['start_time'][:5], # HH:MM
+                    end_time=s['end_time'][:5]
+                )
+                
+            return True
+        except Exception as e:
+            print(f"Sync error: {e}")
+            return False
+
     def get_course(self, course_id: str) -> Optional[Course]:
         return self.courses.get(course_id)
     

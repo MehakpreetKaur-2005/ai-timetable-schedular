@@ -6,7 +6,7 @@ import { HiOutlineCheck, HiOutlineXMark, HiOutlineUserGroup } from 'react-icons/
 
 export default function Workload() {
     const notify = useNotification();
-    const { markSynced, refreshStatus, faculty, subjects, workingDays, timeSlots } = useSchedule();
+    const { markSynced, refreshStatus, faculty, subjects, workingDays, timeSlots, userId } = useSchedule();
     const [assignments, setAssignments] = useState([]);
     const [selectedFaculty, setSelectedFaculty] = useState(null);
     const [syncing, setSyncing] = useState(false);
@@ -59,11 +59,11 @@ export default function Workload() {
                     .filter(s => a.subjects.includes(s.id))
                     .map(s => s.name),
             }));
-            await syncFaculty(facultyData);
+            await syncFaculty(facultyData, userId);
             markSynced('faculty');
 
             // Sync preferences (availability grid → preference_level)
-            await syncPreferences(assignments, workingDays, timeSlots);
+            await syncPreferences(assignments, workingDays, timeSlots, userId);
             markSynced('preferences');
 
             refreshStatus();

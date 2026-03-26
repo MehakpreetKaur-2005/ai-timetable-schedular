@@ -39,7 +39,7 @@ export default function Login() {
       <div className="auth-card">
         <h2 className="auth-title">Welcome Back</h2>
         <p className="auth-subtitle">Log in to SchedulAI</p>
-        
+
         {error && <div className="auth-error">{error}</div>}
 
         <form onSubmit={handleLogin} className="auth-form">
@@ -71,7 +71,7 @@ export default function Login() {
         </form>
 
         <div className="auth-footer">
-          <p>Don't have an account? <Link to="/signup">Create New Account</Link></p>
+          <p>Don't have an account? <Link to="/register">Create New Account</Link></p>
         </div>
       </div>
     </div>

@@ -1,10 +1,12 @@
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
 import '../../landing.css'
 
 export default function Register() {
   const navigate = useNavigate()
+  const { signup } = useAuth()
   
   // Form fields
   const [firstName, setFirstName] = useState('')
@@ -44,25 +46,22 @@ export default function Register() {
     }
 
     // Attempt to register with Supabase Auth
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-    })
+    const { success, data, error: authError } = await signup(email, password)
 
-    if (authError) {
-      setError(authError.message)
+    if (!success) {
+      setError(authError)
       setLoading(false)
       return
     }
 
     // Check if user was created safely
-    if (authData?.user) {
+    if (data?.user) {
       // Insert additional fields into 'users' table
       const { error: dbError } = await supabase
         .from('users')
         .insert([
           {
-            id: authData.user.id,
+            id: data.user.id,
             first_name: firstName,
             last_name: lastName,
             institution_name: institutionName,
@@ -75,7 +74,6 @@ export default function Register() {
       if (dbError) {
         console.error("DB Insert Error:", dbError)
         setError("Account created, but failed to save profile details. " + dbError.message)
-        // Note: depending on security, sometimes it's better to show a generic error
       } else {
         // Success
         navigate('/admin')
@@ -90,7 +88,7 @@ export default function Register() {
       <div className="auth-card register-card">
         <h2 className="auth-title">Create an Account</h2>
         <p className="auth-subtitle">Join SchedulAI today</p>
-        
+
         {error && <div className="auth-error">{error}</div>}
 
         <form onSubmit={handleRegister} className="auth-form">

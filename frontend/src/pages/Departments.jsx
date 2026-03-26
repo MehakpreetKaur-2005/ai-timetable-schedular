@@ -1,16 +1,30 @@
 import { useState } from 'react';
 import { useNotification } from '../context/NotificationContext';
 import { useSchedule } from '../context/ScheduleContext';
-import { HiOutlinePlus, HiOutlinePencil, HiOutlineTrash, HiOutlineMagnifyingGlass, HiOutlineXMark, HiOutlineBuildingOffice2 } from 'react-icons/hi2';
+import { syncDepartments } from '../services/api';
+import { v4 as uuidv4 } from 'uuid';
+import { HiOutlinePlus, HiOutlineMagnifyingGlass, HiOutlineXMark, HiOutlineBuildingOffice2, HiPencil, HiTrash } from 'react-icons/hi2';
+import { useEffect } from 'react';
 
 export default function Departments() {
     const notify = useNotification();
-    const { departments, setDepartments } = useSchedule();
+    const { departments, setDepartments, userId, markSynced } = useSchedule();
     const [search, setSearch] = useState('');
     const [modal, setModal] = useState(null); // null | { mode: 'add'|'edit', data }
     const [deleteConfirm, setDeleteConfirm] = useState(null);
     const [form, setForm] = useState({ name: '', code: '' });
     const [errors, setErrors] = useState({});
+    const [syncing, setSyncing] = useState(false);
+    const [activeDropdown, setActiveDropdown] = useState(null); // ID of the dept with open dropdown
+
+    // Close dropdown on click outside
+    useEffect(() => {
+        const handleClickOutside = () => setActiveDropdown(null);
+        if (activeDropdown) {
+            document.addEventListener('click', handleClickOutside);
+        }
+        return () => document.removeEventListener('click', handleClickOutside);
+    }, [activeDropdown]);
 
     const filtered = departments.filter(d =>
         d.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -37,23 +51,42 @@ export default function Departments() {
         return Object.keys(errs).length === 0;
     };
 
+    const syncToBackend = async (updated) => {
+        setSyncing(true);
+        try {
+            await syncDepartments(updated, userId);
+            markSynced('departments');
+            notify.success('Synced with backend', `${updated.length} department(s) synced.`);
+        } catch (err) {
+            notify.error('Sync failed', err.message);
+        } finally {
+            setSyncing(false);
+        }
+    };
+
     const handleSave = () => {
         if (!validate()) return;
+        let updated;
         if (modal.mode === 'add') {
-            const newDept = { id: Date.now(), name: form.name, code: form.code.toUpperCase() };
-            setDepartments([...departments, newDept]);
+            const newDept = { id: uuidv4(), name: form.name, code: form.code.toUpperCase() };
+            updated = [...departments, newDept];
+            setDepartments(updated);
             notify.success('Department added', `${form.name} has been created.`);
         } else {
-            setDepartments(departments.map(d => d.id === modal.data.id ? { ...d, ...form, code: form.code.toUpperCase() } : d));
+            updated = departments.map(d => d.id === modal.data.id ? { ...d, ...form, code: form.code.toUpperCase() } : d);
+            setDepartments(updated);
             notify.success('Department updated', `${form.name} has been updated.`);
         }
         setModal(null);
+        syncToBackend(updated);
     };
 
     const handleDelete = () => {
-        setDepartments(departments.filter(d => d.id !== deleteConfirm.id));
+        const updated = departments.filter(d => d.id !== deleteConfirm.id);
+        setDepartments(updated);
         notify.success('Department deleted', `${deleteConfirm.name} has been removed.`);
         setDeleteConfirm(null);
+        syncToBackend(updated);
     };
 
     return (
@@ -63,7 +96,8 @@ export default function Departments() {
                     <h2>Departments</h2>
                     <p className="page-header__description">Manage academic departments</p>
                 </div>
-                <div className="page-header__actions">
+                <div className="page-header__actions" style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+                    {syncing && <span style={{ fontSize: 'var(--font-xs)', color: 'var(--primary-500)' }}>⟳ Syncing...</span>}
                     <button className="btn btn--primary" onClick={openAdd}>
                         <HiOutlinePlus /> Add Department
                     </button>
@@ -104,12 +138,20 @@ export default function Departments() {
                                             <td style={{ fontWeight: 500, color: 'var(--gray-900)' }}>{dept.name}</td>
                                             <td><span className="badge badge--primary">{dept.code}</span></td>
                                             <td>
-                                                <div className="table__actions">
-                                                    <button className="btn btn--ghost btn--icon btn--sm" onClick={() => openEdit(dept)} title="Edit">
-                                                        <HiOutlinePencil />
+                                                <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                                                    <button 
+                                                        onClick={() => openEdit(dept)}
+                                                        title="Edit"
+                                                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '5px', display: 'block', visibility: 'visible', opacity: 1 }}
+                                                    >
+                                                        <HiPencil style={{ color: '#000000', fontSize: '1.5rem', display: 'block', visibility: 'visible', opacity: 1 }} />
                                                     </button>
-                                                    <button className="btn btn--ghost btn--icon btn--sm" onClick={() => setDeleteConfirm(dept)} title="Delete" style={{ color: 'var(--error-500)' }}>
-                                                        <HiOutlineTrash />
+                                                    <button 
+                                                        onClick={() => setDeleteConfirm(dept)}
+                                                        title="Delete"
+                                                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '5px', display: 'block', visibility: 'visible', opacity: 1 }}
+                                                    >
+                                                        <HiTrash style={{ color: '#ff0000', fontSize: '1.5rem', display: 'block', visibility: 'visible', opacity: 1 }} />
                                                     </button>
                                                 </div>
                                             </td>

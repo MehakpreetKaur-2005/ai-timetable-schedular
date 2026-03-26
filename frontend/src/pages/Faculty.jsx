@@ -2,15 +2,16 @@ import { useState } from 'react';
 import { useNotification } from '../context/NotificationContext';
 import { useSchedule } from '../context/ScheduleContext';
 import { syncFaculty } from '../services/api';
-import { HiOutlinePlus, HiOutlinePencil, HiOutlineTrash, HiOutlineMagnifyingGlass, HiOutlineXMark, HiOutlineUserGroup } from 'react-icons/hi2';
+import { v4 as uuidv4 } from 'uuid';
+import { HiOutlinePlus, HiOutlineMagnifyingGlass, HiOutlineXMark, HiOutlineUserGroup, HiPencil, HiTrash } from 'react-icons/hi2';
 
 export default function Faculty() {
     const notify = useNotification();
-    const { markSynced, refreshStatus, departments, faculty, setFaculty } = useSchedule();
+    const { markSynced, refreshStatus, departments, faculty, setFaculty, userId } = useSchedule();
     const [search, setSearch] = useState('');
     const [modal, setModal] = useState(null);
     const [deleteConfirm, setDeleteConfirm] = useState(null);
-    const [form, setForm] = useState({ name: '', email: '', departmentId: '', maxHours: '' });
+    const [form, setForm] = useState({ name: '', email: '', departmentId: '', maxHours: '', role: 'Professor' });
     const [errors, setErrors] = useState({});
     const [syncing, setSyncing] = useState(false);
 
@@ -21,13 +22,13 @@ export default function Faculty() {
     );
 
     const openAdd = () => {
-        setForm({ name: '', email: '', departmentId: '', maxHours: '18' });
+        setForm({ name: '', email: '', departmentId: '', maxHours: '18', role: 'Professor' });
         setErrors({});
         setModal({ mode: 'add' });
     };
 
     const openEdit = (f) => {
-        setForm({ name: f.name, email: f.email, departmentId: String(f.departmentId), maxHours: String(f.maxHours) });
+        setForm({ name: f.name, email: f.email, departmentId: String(f.departmentId), maxHours: String(f.maxHours), role: f.role || 'Professor' });
         setErrors({});
         setModal({ mode: 'edit', data: f });
     };
@@ -46,7 +47,7 @@ export default function Faculty() {
     const syncToBackend = async (updatedFaculty) => {
         setSyncing(true);
         try {
-            await syncFaculty(updatedFaculty);
+            await syncFaculty(updatedFaculty, userId);
             markSynced('faculty');
             refreshStatus();
             notify.success('Synced with backend', `${updatedFaculty.length} faculty member(s) synced.`);
@@ -63,9 +64,9 @@ export default function Faculty() {
         let updated;
         if (modal.mode === 'add') {
             updated = [...faculty, {
-                id: Date.now(), name: form.name, email: form.email,
+                id: uuidv4(), name: form.name, email: form.email,
                 departmentId: Number(form.departmentId), department: dept?.name || '',
-                maxHours: Number(form.maxHours),
+                maxHours: Number(form.maxHours), role: form.role,
             }];
             setFaculty(updated);
             notify.success('Faculty added', `${form.name} has been added.`);
@@ -73,7 +74,7 @@ export default function Faculty() {
             updated = faculty.map(f => f.id === modal.data.id ? {
                 ...f, name: form.name, email: form.email,
                 departmentId: Number(form.departmentId), department: dept?.name || '',
-                maxHours: Number(form.maxHours),
+                maxHours: Number(form.maxHours), role: form.role,
             } : f);
             setFaculty(updated);
             notify.success('Faculty updated', `${form.name} has been updated.`);
@@ -122,18 +123,31 @@ export default function Faculty() {
                     ) : (
                         <div className="table-wrapper">
                             <table className="table">
-                                <thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Max Hours</th><th style={{ width: 120 }}>Actions</th></tr></thead>
+                                <thead><tr><th>Name</th><th>Email</th><th>Department</th><th>Role</th><th>Max Hours</th><th style={{ width: 120 }}>Actions</th></tr></thead>
                                 <tbody>
                                     {filtered.map(f => (
                                         <tr key={f.id}>
                                             <td style={{ fontWeight: 500, color: 'var(--gray-900)' }}>{f.name}</td>
                                             <td>{f.email}</td>
                                             <td><span className="badge badge--neutral">{f.department}</span></td>
+                                            <td><span className={`badge ${f.role === 'Lab Assistant' ? 'badge--warning' : 'badge--primary'}`}>{f.role || 'Professor'}</span></td>
                                             <td>{f.maxHours}h/week</td>
                                             <td>
-                                                <div className="table__actions">
-                                                    <button className="btn btn--ghost btn--icon btn--sm" onClick={() => openEdit(f)}><HiOutlinePencil /></button>
-                                                    <button className="btn btn--ghost btn--icon btn--sm" style={{ color: 'var(--error-500)' }} onClick={() => setDeleteConfirm(f)}><HiOutlineTrash /></button>
+                                                <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                                                    <button 
+                                                        onClick={() => openEdit(f)}
+                                                        title="Edit"
+                                                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '5px', display: 'block', visibility: 'visible', opacity: 1 }}
+                                                    >
+                                                        <HiPencil style={{ color: '#000000', fontSize: '1.5rem', display: 'block', visibility: 'visible', opacity: 1 }} />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => setDeleteConfirm(f)}
+                                                        title="Delete"
+                                                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '5px', display: 'block', visibility: 'visible', opacity: 1 }}
+                                                    >
+                                                        <HiTrash style={{ color: '#ff0000', fontSize: '1.5rem', display: 'block', visibility: 'visible', opacity: 1 }} />
+                                                    </button>
                                                 </div>
                                             </td>
                                         </tr>
@@ -173,6 +187,15 @@ export default function Faculty() {
                                         </select>
                                         {errors.departmentId && <span className="form-field__error">{errors.departmentId}</span>}
                                     </div>
+                                </div>
+                                <div className="form-field">
+                                    <label className="form-field__label form-field__label--required">Role</label>
+                                    <select className="form-field__input" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
+                                        <option value="Professor">Professor</option>
+                                        <option value="Lab Assistant">Lab Assistant</option>
+                                    </select>
+                                </div>
+                                <div className="form-grid">
                                     <div className="form-field">
                                         <label className="form-field__label form-field__label--required">Max Weekly Hours</label>
                                         <input className={`form-field__input${errors.maxHours ? ' form-field__input--error' : ''}`} type="number" min="1" max="40" value={form.maxHours} onChange={e => setForm({ ...form, maxHours: e.target.value })} />

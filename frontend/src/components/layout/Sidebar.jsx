@@ -32,7 +32,6 @@ const navGroups = [
             { to: '/admin/workload', icon: <HiOutlineAdjustmentsHorizontal />, label: 'Workload' },
             { to: '/admin/generate', icon: <HiOutlineCpuChip />, label: 'Generate' },
             { to: '/admin/timetable', icon: <HiOutlineTableCells />, label: 'View Timetable' },
-            { to: '/admin/edit-timetable', icon: <HiOutlinePencilSquare />, label: 'Edit Schedule' },
         ],
     },
     {

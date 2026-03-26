@@ -5,9 +5,7 @@ import { HiOutlineCpuChip } from 'react-icons/hi2';
 export default function AuthLayout() {
     const { isAuthenticated } = useAuth();
 
-    if (isAuthenticated) {
-        return <Navigate to="/admin" replace />;
-    }
+    // Removed automatic redirect to dashboard here to allow login/signup pages access
 
     return (
         <div className="auth-layout">

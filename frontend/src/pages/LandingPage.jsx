@@ -59,7 +59,7 @@ export default function LandingPage() {
 
         {/* CTA */}
         <Link className="navbar-cta" to="/login">
-          Sign Up <span className="navbar-cta-arrow">→</span>
+          Login <span className="navbar-cta-arrow">→</span>
         </Link>
       </nav>
 
@@ -79,7 +79,7 @@ export default function LandingPage() {
             Smarter Timetable. Zero Conflicts. Powered by AI.
           </p>
           <div className="hero-cta-row">
-            <button className="btn btn-primary" id="cta-get-started" onClick={() => navigate('/signup')}>
+            <button className="btn btn-primary" id="cta-get-started" onClick={() => navigate('/register')}>
               Get Started
             </button>
             <button className="btn btn-secondary" id="cta-learn-more" onClick={() => document.getElementById('problem').scrollIntoView({behavior: 'smooth'})}>

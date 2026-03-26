@@ -14,7 +14,7 @@ import {
 
 export default function Dashboard() {
     const navigate = useNavigate();
-    const { systemStatus, refreshStatus, schedule, fitnessScore, sections } = useSchedule();
+    const { systemStatus, refreshStatus, schedule, fitnessScore, sections, faculty, subjects, rooms, timeSlots, workingDays } = useSchedule();
     const [loaded, setLoaded] = useState(false);
     const [history, setHistory] = useState([]);
 
@@ -39,16 +39,21 @@ export default function Dashboard() {
     };
     const badge = statusConfig[status.state];
 
-    /* ── Stats — from backend status OR fallback ── */
-    const coursesCount = systemStatus?.courses ?? 0;
-    const facultyCount = systemStatus?.faculty ?? 0;
-    const roomsCount = systemStatus?.rooms ?? 0;
-    const timeSlotsCount = systemStatus?.time_slots ?? 0;
+    /* ── Stats — from context state (Real-time) ── */
+    const facultyCount = faculty.length;
+    const coursesCount = subjects.length;
+    const sectionsCount = sections.length;
+    const roomsCount = rooms.length;
+    
+    // Calculate total possible slots: Active Days * (Time Slots - 1 (Lunch))
+    const activeDaysCount = workingDays.filter(d => d.active).length;
+    const actualSlotsPerDay = timeSlots.filter(s => s.label !== 'Lunch').length;
+    const timeSlotsCount = activeDaysCount * actualSlotsPerDay;
 
     const stats = [
         { label: 'Faculty', value: facultyCount, icon: <HiOutlineUserGroup />, tint: 'lavender' },
         { label: 'Courses', value: coursesCount, icon: <HiOutlineBookOpen />, tint: 'sky' },
-        { label: 'Sections', value: sections.length, icon: <HiOutlineRectangleGroup />, tint: 'mint' },
+        { label: 'Sections', value: sectionsCount, icon: <HiOutlineRectangleGroup />, tint: 'mint' },
         { label: 'Rooms', value: roomsCount, icon: <HiOutlineHomeModern />, tint: 'peach' },
         { label: 'Time Slots', value: timeSlotsCount, icon: <HiOutlineClock />, tint: 'lilac' },
     ];

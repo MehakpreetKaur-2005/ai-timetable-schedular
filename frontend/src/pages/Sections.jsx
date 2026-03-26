@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNotification } from '../context/NotificationContext';
 import { useSchedule } from '../context/ScheduleContext';
-import { HiOutlinePlus, HiOutlinePencil, HiOutlineTrash, HiOutlineMagnifyingGlass, HiOutlineXMark, HiOutlineRectangleGroup } from 'react-icons/hi2';
+import { HiOutlinePlus, HiOutlineMagnifyingGlass, HiOutlineXMark, HiOutlineRectangleGroup, HiPencil, HiTrash } from 'react-icons/hi2';
+import { syncSections } from '../services/api';
 
 export default function Sections() {
     const notify = useNotification();
-    const { departments, sections, setSections } = useSchedule();
+    const { departments, sections, setSections, userId } = useSchedule();
     const [search, setSearch] = useState('');
     const [modal, setModal] = useState(null);
     const [deleteConfirm, setDeleteConfirm] = useState(null);
@@ -28,24 +29,30 @@ export default function Sections() {
         setErrors(errs); return Object.keys(errs).length === 0;
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!validate()) return;
         const dept = departments.find(d => d.id === Number(form.departmentId));
         const data = { name: form.name, departmentId: Number(form.departmentId), department: dept?.name || '', studentCount: Number(form.studentCount) };
+        let updated;
         if (modal.mode === 'add') {
-            setSections([...sections, { id: Date.now(), ...data }]);
+            updated = [...sections, { id: Date.now(), ...data }];
+            setSections(updated);
             notify.success('Section added', `${form.name} created.`);
         } else {
-            setSections(sections.map(s => s.id === modal.data.id ? { ...s, ...data } : s));
+            updated = sections.map(s => s.id === modal.data.id ? { ...s, ...data } : s);
+            setSections(updated);
             notify.success('Section updated', `${form.name} updated.`);
         }
         setModal(null);
+        try { await syncSections(updated, userId); } catch (e) { notify.error('Sync failed', e.message); }
     };
 
-    const handleDelete = () => {
-        setSections(sections.filter(s => s.id !== deleteConfirm.id));
+    const handleDelete = async () => {
+        const updated = sections.filter(s => s.id !== deleteConfirm.id);
+        setSections(updated);
         notify.success('Section deleted', `${deleteConfirm.name} removed.`);
         setDeleteConfirm(null);
+        try { await syncSections(updated, userId); } catch (e) { notify.error('Sync failed', e.message); }
     };
 
     return (
@@ -69,10 +76,24 @@ export default function Sections() {
                                     <td style={{ fontWeight: 500, color: 'var(--gray-900)' }}>{s.name}</td>
                                     <td><span className="badge badge--neutral">{s.department}</span></td>
                                     <td>{s.studentCount} students</td>
-                                    <td><div className="table__actions">
-                                        <button className="btn btn--ghost btn--icon btn--sm" onClick={() => openEdit(s)}><HiOutlinePencil /></button>
-                                        <button className="btn btn--ghost btn--icon btn--sm" style={{ color: 'var(--error-500)' }} onClick={() => setDeleteConfirm(s)}><HiOutlineTrash /></button>
-                                    </div></td>
+                                    <td>
+                                        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                                            <button 
+                                                onClick={() => openEdit(s)}
+                                                title="Edit"
+                                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '5px', display: 'block', visibility: 'visible', opacity: 1 }}
+                                            >
+                                                <HiPencil style={{ color: '#000000', fontSize: '1.5rem', display: 'block', visibility: 'visible', opacity: 1 }} />
+                                            </button>
+                                            <button 
+                                                onClick={() => setDeleteConfirm(s)}
+                                                title="Delete"
+                                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '5px', display: 'block', visibility: 'visible', opacity: 1 }}
+                                            >
+                                                <HiTrash style={{ color: '#ff0000', fontSize: '1.5rem', display: 'block', visibility: 'visible', opacity: 1 }} />
+                                            </button>
+                                        </div>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody></table></div>

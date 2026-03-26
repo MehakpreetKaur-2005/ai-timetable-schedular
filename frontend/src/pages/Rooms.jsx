@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { useNotification } from '../context/NotificationContext';
 import { useSchedule } from '../context/ScheduleContext';
 import { syncRooms } from '../services/api';
-import { HiOutlinePlus, HiOutlinePencil, HiOutlineTrash, HiOutlineMagnifyingGlass, HiOutlineXMark, HiOutlineHomeModern } from 'react-icons/hi2';
+import { v4 as uuidv4 } from 'uuid';
+import { HiOutlinePlus, HiOutlineMagnifyingGlass, HiOutlineXMark, HiOutlineHomeModern, HiPencil, HiTrash } from 'react-icons/hi2';
 
 export default function Rooms() {
     const notify = useNotification();
-    const { markSynced, refreshStatus, rooms, setRooms } = useSchedule();
+    const { markSynced, refreshStatus, rooms, setRooms, userId } = useSchedule();
     const [search, setSearch] = useState('');
     const [filterType, setFilterType] = useState('');
     const [modal, setModal] = useState(null);
@@ -34,7 +35,7 @@ export default function Rooms() {
     const syncToBackend = async (updatedRooms) => {
         setSyncing(true);
         try {
-            await syncRooms(updatedRooms);
+            await syncRooms(updatedRooms, userId);
             markSynced('rooms');
             refreshStatus();
             notify.success('Synced with backend', `${updatedRooms.length} room(s) synced.`);
@@ -50,7 +51,7 @@ export default function Rooms() {
         const data = { name: form.name, capacity: Number(form.capacity), type: form.type };
         let updated;
         if (modal.mode === 'add') {
-            updated = [...rooms, { id: Date.now(), ...data }];
+            updated = [...rooms, { id: uuidv4(), ...data }];
             setRooms(updated);
             notify.success('Room added', `${form.name} created.`);
         } else {
@@ -98,10 +99,24 @@ export default function Rooms() {
                                     <td style={{ fontWeight: 500, color: 'var(--gray-900)' }}>{r.name}</td>
                                     <td>{r.capacity} seats</td>
                                     <td><span className={`badge ${r.type === 'Lab' ? 'badge--warning' : 'badge--primary'}`}>{r.type}</span></td>
-                                    <td><div className="table__actions">
-                                        <button className="btn btn--ghost btn--icon btn--sm" onClick={() => openEdit(r)}><HiOutlinePencil /></button>
-                                        <button className="btn btn--ghost btn--icon btn--sm" style={{ color: 'var(--error-500)' }} onClick={() => setDeleteConfirm(r)}><HiOutlineTrash /></button>
-                                    </div></td>
+                                    <td>
+                                        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                                            <button 
+                                                onClick={() => openEdit(r)}
+                                                title="Edit"
+                                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '5px', display: 'block', visibility: 'visible', opacity: 1 }}
+                                            >
+                                                <HiPencil style={{ color: '#000000', fontSize: '1.5rem', display: 'block', visibility: 'visible', opacity: 1 }} />
+                                            </button>
+                                            <button 
+                                                onClick={() => setDeleteConfirm(r)}
+                                                title="Delete"
+                                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '5px', display: 'block', visibility: 'visible', opacity: 1 }}
+                                            >
+                                                <HiTrash style={{ color: '#ff0000', fontSize: '1.5rem', display: 'block', visibility: 'visible', opacity: 1 }} />
+                                            </button>
+                                        </div>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody></table></div>

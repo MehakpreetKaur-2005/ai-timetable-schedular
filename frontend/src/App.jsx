@@ -14,7 +14,6 @@ import TimeSlots from './pages/TimeSlots';
 import Workload from './pages/Workload';
 import GenerateTimetable from './pages/GenerateTimetable';
 import ViewTimetable from './pages/ViewTimetable';
-import EditTimetable from './pages/EditTimetable';
 import Analytics from './pages/Analytics';
 import Profile from './pages/Profile';
 
@@ -27,7 +26,7 @@ export default function App() {
       {/* Auth Routes */}
       <Route element={<AuthLayout />}>
         <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
+        <Route path="/register" element={<Signup />} />
       </Route>
 
       {/* Admin Protected Routes */}
@@ -42,7 +41,6 @@ export default function App() {
         <Route path="workload" element={<Workload />} />
         <Route path="generate" element={<GenerateTimetable />} />
         <Route path="timetable" element={<ViewTimetable />} />
-        <Route path="edit-timetable" element={<EditTimetable />} />
         <Route path="analytics" element={<Analytics />} />
         <Route path="profile" element={<Profile />} />
       </Route>

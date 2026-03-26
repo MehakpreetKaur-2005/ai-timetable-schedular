@@ -1,5 +1,14 @@
-import { createContext, useContext, useState, useCallback } from 'react';
-import { getSystemStatus as fetchStatus } from '../services/api';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { 
+  getSystemStatus as fetchStatus,
+  getCourses,
+  getFaculty,
+  getRooms,
+  getTimeslots,
+  getDepartments,
+  getSections
+} from '../services/api';
+import { useAuth } from './AuthContext';
 
 const ScheduleContext = createContext(null);
 
@@ -25,6 +34,7 @@ const DEFAULT_TIME_SLOTS = [
 ];
 
 export function ScheduleProvider({ children }) {
+  const { user } = useAuth();
   // Generated schedule data
   const [schedule, setSchedule] = useState(null);
   const [fitnessScore, setFitnessScore] = useState(null);
@@ -45,6 +55,86 @@ export function ScheduleProvider({ children }) {
   const [rooms, setRooms] = useState([]);
   const [workingDays, setWorkingDays] = useState(DEFAULT_WORKING_DAYS);
   const [timeSlots, setTimeSlots] = useState(DEFAULT_TIME_SLOTS);
+  const [userId, setUserId] = useState(user?.id || null);
+
+  // Sync userId with Auth context
+  useEffect(() => {
+    setUserId(user?.id || null);
+  }, [user]);
+
+  // Load user data from backend (Hydration)
+  useEffect(() => {
+    if (userId) {
+      loadUserData(userId);
+    }
+  }, [userId]);
+
+  const loadUserData = async (uid) => {
+    try {
+      const [fData, cData, rData, tData, dData, sData] = await Promise.all([
+        getFaculty(uid),
+        getCourses(uid),
+        getRooms(uid),
+        getTimeslots(uid),
+        getDepartments(uid),
+        getSections(uid)
+      ]);
+
+      if (dData) setDepartments(dData.map(d => ({
+        id: d.id,
+        name: d.name,
+        code: d.code
+      })));
+
+      if (fData) setFaculty(fData.map(f => ({
+        id: f.id,
+        name: f.name,
+        email: f.email || '',
+        department: f.department,
+        departmentId: f.department_id,
+        maxHours: f.max_hours_per_week,
+        role: f.role || 'Professor',
+        specializations: f.specializations || []
+      })));
+
+      if (cData) setSubjects(cData.map(c => ({
+        id: c.id,
+        name: c.name,
+        weeklyHours: c.weekly_hours,
+        studentStrength: c.student_strength,
+        labRequired: c.is_lab,
+        theoryHours: c.theory_hours,
+        labHours: c.lab_hours,
+        subjectCode: c.subject_code
+      })));
+
+      if (rData) setRooms(rData.map(r => ({
+        id: r.id,
+        name: r.name,
+        capacity: r.capacity,
+        type: r.room_type === 'lab' ? 'Lab' : 'Classroom'
+      })));
+
+      if (sData) setSections(sData.map(s => ({
+        id: s.id,
+        name: s.name,
+        department: s.department,
+        departmentId: s.department_id,
+        studentCount: s.student_count
+      })));
+
+      // For timeslots, we mainly use them to set active working days
+      if (tData && tData.length > 0) {
+        const daysPresent = [...new Set(tData.map(t => t.day))];
+        setWorkingDays(prev => prev.map(d => ({
+          ...d,
+          active: daysPresent.includes(d.day)
+        })));
+      }
+    } catch (err) {
+      console.error("Failed to hydrate schedule data:", err);
+    }
+  };
 
   const setGeneratedSchedule = useCallback((result) => {
     setSchedule(result.schedule);
@@ -61,15 +151,16 @@ export function ScheduleProvider({ children }) {
   }, []);
 
   const refreshStatus = useCallback(async () => {
+    if (!userId) return;
     try {
-      const status = await fetchStatus();
+      const status = await fetchStatus(userId);
       setSystemStatus(status);
       return status;
     } catch {
       // Backend might be offline – keep last known status
       return systemStatus;
     }
-  }, [systemStatus]);
+  }, [systemStatus, userId]);
 
   const markSynced = useCallback((entity) => {
     setLastSynced(prev => ({ ...prev, [entity]: new Date().toISOString() }));
@@ -89,6 +180,7 @@ export function ScheduleProvider({ children }) {
       rooms, setRooms,
       workingDays, setWorkingDays,
       timeSlots, setTimeSlots,
+      userId,
     }}>
       {children}
     </ScheduleContext.Provider>

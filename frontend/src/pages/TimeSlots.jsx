@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useNotification } from '../context/NotificationContext';
 import { useSchedule } from '../context/ScheduleContext';
 import { syncTimeslots } from '../services/api';
@@ -6,7 +6,7 @@ import { HiOutlinePlus, HiOutlineTrash, HiOutlineXMark, HiOutlineCheck, HiOutlin
 
 export default function TimeSlots() {
     const notify = useNotification();
-    const { markSynced, refreshStatus, workingDays, setWorkingDays, timeSlots, setTimeSlots } = useSchedule();
+    const { markSynced, refreshStatus, workingDays, setWorkingDays, timeSlots, setTimeSlots, userId } = useSchedule();
     const [addModal, setAddModal] = useState(false);
     const [form, setForm] = useState({ label: '', start: '', end: '' });
     const [errors, setErrors] = useState({});
@@ -29,7 +29,7 @@ export default function TimeSlots() {
     const syncToBackend = async (days, slots) => {
         setSyncing(true);
         try {
-            await syncTimeslots(days, slots);
+            await syncTimeslots(days, slots, userId);
             markSynced('timeslots');
             refreshStatus();
             const activeDayCount = days.filter(d => d.active).length;
@@ -133,12 +133,12 @@ export default function TimeSlots() {
                                 <div className="timetable-grid__header" key={s.id}>{s.label}<br /><span style={{ fontSize: '0.65rem', opacity: 0.7 }}>{s.start}-{s.end}</span></div>
                             ))}
                             {activeDays.map(d => (
-                                <>
-                                    <div className="timetable-grid__day" key={d.day}>{d.day}</div>
+                                <React.Fragment key={d.day}>
+                                    <div className="timetable-grid__day">{d.day}</div>
                                     {timeSlots.map(s => (
                                         <div className="timetable-grid__cell timetable-grid__cell--empty" key={`${d.day}-${s.id}`}>—</div>
                                     ))}
-                                </>
+                                </React.Fragment>
                             ))}
                         </div>
                     )}
